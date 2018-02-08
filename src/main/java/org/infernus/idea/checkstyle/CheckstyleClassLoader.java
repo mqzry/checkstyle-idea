@@ -7,7 +7,6 @@ import org.infernus.idea.checkstyle.csapi.CheckstyleActions;
 import org.infernus.idea.checkstyle.exception.CheckStylePluginException;
 import org.infernus.idea.checkstyle.util.ChildFirstURLClassLoader;
 import org.infernus.idea.checkstyle.util.Notifications;
-import org.infernus.idea.checkstyle.util.Strings;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -25,6 +24,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static org.infernus.idea.checkstyle.CheckStyleBundle.message;
+import static org.infernus.idea.checkstyle.util.Strings.isBlank;
 
 
 /**
@@ -39,32 +39,43 @@ public class CheckstyleClassLoader {
      * appended to the result afterwards.
      * <img src="doc-files/CheckstyleClassLoader-1.png"/>
      */
-    private static final Pattern CLASSES_URL1 = Pattern.compile("^(.*?)"
-            + "[/\\\\]out[/\\\\]production[/\\\\]classes[/\\\\]?$");
+    private static final Pattern CLASSES_URL_2017_2_LATER = Pattern.compile(
+            "^(.*?)[/\\\\]out[/\\\\]production[/\\\\]classes[/\\\\]?$");
 
     /**
      * Second pattern we can use to guess the build dir, valid for IntelliJ 2017.1 or earlier:
      * <img src="doc-files/CheckstyleClassLoader-2.png"/>
      */
-    private static final Pattern CLASSES_URL2 = Pattern.compile("^(.*?)[/\\\\]classes(?:[/\\\\]main)?[/\\\\]?$");
+    private static final Pattern CLASSES_URL_2017_1_EARLIER = Pattern.compile(
+            "^(.*?)[/\\\\]classes(?:[/\\\\]main)?[/\\\\]?$");
 
     private final ClassLoader classLoader;
 
     private final Project project;
+    private final CheckstyleProjectService checkstyleProjectService;
 
-    public CheckstyleClassLoader(@NotNull final Project pProject,
-                                 @NotNull final String pCheckstyleVersion,
-                                 @Nullable final List<URL> pThirdPartyClassPath) {
-        project = pProject;
+    public CheckstyleClassLoader(@NotNull final Project project,
+                                 @NotNull final CheckstyleProjectService checkstyleProjectService,
+                                 @NotNull final String checkstyleVersion,
+                                 @Nullable final List<URL> thirdPartyClassPath) {
+        this.project = project;
+        this.checkstyleProjectService = checkstyleProjectService;
+
         final Properties classPathInfos = loadClassPathInfos();
-        final String cpProp = classPathInfos.getProperty(pCheckstyleVersion);
-        if (Strings.isBlank(cpProp)) {
-            throw new CheckStylePluginException("Unsupported Checkstyle version: " + pCheckstyleVersion);
+        final String cpProp = classPathInfos.getProperty(checkstyleVersion);
+        if (isBlank(cpProp)) {
+            throw new CheckStylePluginException("Unsupported Checkstyle version: " + checkstyleVersion);
         }
-        List<URL> thirdPartyClassPath = pThirdPartyClassPath != null ? pThirdPartyClassPath : Collections.emptyList();
-        classLoader = buildClassLoader(cpProp, thirdPartyClassPath);
+        classLoader = buildClassLoader(cpProp, emptyListIfNull(thirdPartyClassPath));
     }
 
+    @NotNull
+    private List<URL> emptyListIfNull(@Nullable final List<URL> thirdPartyClassPath) {
+        if (thirdPartyClassPath != null) {
+            return thirdPartyClassPath;
+        }
+        return Collections.emptyList();
+    }
 
     @NotNull
     private static Properties loadClassPathInfos() {
@@ -77,12 +88,11 @@ public class CheckstyleClassLoader {
         return result;
     }
 
-
     @NotNull
     private ClassLoader buildClassLoader(@NotNull final String pClassPathFromProps, @NotNull final List<URL>
             pThirdPartyClassPath) {
         final String basePath = getBasePath();
-        final File classesDir4UnitTesting = new File(basePath, "classes/csaccess");
+        final File classesDir4UnitTesting = new File(basePath, "classes/java/csaccess");
         final boolean unitTesting = classesDir4UnitTesting.exists();
 
         List<URL> urls = new ArrayList<>();
@@ -124,7 +134,6 @@ public class CheckstyleClassLoader {
         }
     }
 
-
     @NotNull
     private List<URL> getUrls(@NotNull final ClassLoader pClassLoader) {
         List<URL> result;
@@ -140,7 +149,6 @@ public class CheckstyleClassLoader {
         return result;
     }
 
-
     /**
      * Determine the base path of the plugin. When running in IntelliJ, this is something like
      * {@code C:/Users/jdoe/.IdeaIC2016.3/config/plugins/CheckStyle-IDEA} (on Windows). When running in a unit test,
@@ -151,36 +159,61 @@ public class CheckstyleClassLoader {
      */
     @NotNull
     private String getBasePath() {
-        String result = null;
+        String result = getPluginPath();
 
-        try {
-            File pluginDir = new File(PathManager.getPluginsPath(), CheckStylePlugin.ID_PLUGIN);
-            if (pluginDir.exists()) {
-                result = pluginDir.getAbsolutePath();
-            }
-        } catch (RuntimeException e) {
-            // ok, if this fails, we are in a unit test situation where PathManager is not initialized, which is fine
-            result = null;
+        if (result == null) {
+            result = getPreinstalledPluginPath();
         }
 
-        // If we could not get the base path from the path manager, deduce it from the current class path:
         if (result == null) {
-            final List<URL> urls = getUrls(getClass().getClassLoader());
-            result = guessFromClassPath(urls, CLASSES_URL1);
-            if (result != null) {
-                result += "/build";
-            } else {
-                result = guessFromClassPath(urls, CLASSES_URL2);
-            }
-            if (result != null) {
-                result = urlDecode(result);
-            }
+            result = guessPluginPathFromClasspath();
         }
 
         if (result == null) {
             throw new CheckStylePluginException("Could not determine plugin directory");
         }
         return result;
+    }
+
+    @Nullable
+    private String guessPluginPathFromClasspath() {
+        final List<URL> urls = getUrls(getClass().getClassLoader());
+        String result = guessFromClassPath(urls, CLASSES_URL_2017_2_LATER);
+        if (result != null) {
+            result += "/build";
+        } else {
+            result = guessFromClassPath(urls, CLASSES_URL_2017_1_EARLIER);
+        }
+        if (result != null) {
+            result = urlDecode(result);
+        }
+        return result;
+    }
+
+    @Nullable
+    private String getPluginPath() {
+        try {
+            File pluginDir = new File(PathManager.getPluginsPath(), CheckStylePlugin.ID_PLUGIN);
+            if (pluginDir.exists()) {
+                return pluginDir.getAbsolutePath();
+            }
+        } catch (RuntimeException ignored) {
+            // ok, if this fails, we are in a unit test situation where PathManager is not initialized, which is fine
+        }
+        return null;
+    }
+
+    @Nullable
+    private String getPreinstalledPluginPath() {
+        try {
+            File preInstalledPluginDir = new File(PathManager.getPreInstalledPluginsPath(), CheckStylePlugin.ID_PLUGIN);
+            if (preInstalledPluginDir.exists()) {
+                return preInstalledPluginDir.getAbsolutePath();
+            }
+        } catch (RuntimeException ignored) {
+            // ok, if this fails, we are in a unit test situation where PathManager is not initialized, which is fine
+        }
+        return null;
     }
 
     @Nullable
@@ -210,8 +243,10 @@ public class CheckstyleClassLoader {
     @NotNull
     CheckstyleActions loadCheckstyleImpl() {
         try {
-            Constructor<?> constructor = classLoader.loadClass(CSACTIONS_CLASS).getConstructor(Project.class);
-            return (CheckstyleActions) constructor.newInstance(project);
+            Constructor<?> constructor = classLoader
+                    .loadClass(CSACTIONS_CLASS)
+                    .getConstructor(Project.class, CheckstyleProjectService.class);
+            return (CheckstyleActions) constructor.newInstance(project, checkstyleProjectService);
         } catch (ReflectiveOperationException e) {
             throw new CheckStylePluginException("internal error", e);
         }

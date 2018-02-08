@@ -1,44 +1,38 @@
 package org.infernus.idea.checkstyle;
 
-import java.util.Collections;
+import com.intellij.openapi.project.Project;
+import org.infernus.idea.checkstyle.config.PluginConfiguration;
+import org.infernus.idea.checkstyle.config.PluginConfigurationBuilder;
+import org.infernus.idea.checkstyle.config.PluginConfigurationManager;
+import org.junit.Before;
+import org.junit.Test;
+
 import java.util.SortedSet;
 
-import com.intellij.openapi.project.Project;
-import org.infernus.idea.checkstyle.model.ScanScope;
-import org.junit.AfterClass;
-import org.junit.Assert;
-import org.junit.BeforeClass;
-import org.junit.Test;
-import org.mockito.Mockito;
+import static org.junit.Assert.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 
-public class CheckstyleProjectServiceTest
-{
-    private static final Project PROJECT = Mockito.mock(Project.class);
+public class CheckstyleProjectServiceTest {
+    private static final Project PROJECT = mock(Project.class);
 
+    private CheckstyleProjectService underTest;
 
-    @BeforeClass
-    public static void setUp() {
-        CheckStyleConfiguration mockPluginConfig = Mockito.mock(CheckStyleConfiguration.class);
-        final PluginConfigDto mockConfigDto = new PluginConfigDto("7.1.1", ScanScope.AllSources, false,
-                Collections.emptySortedSet(), Collections.emptyList(), null, false);
-        Mockito.when(mockPluginConfig.getCurrentPluginConfig()).thenReturn(mockConfigDto);
-        CheckStyleConfiguration.activateMock4UnitTesting(mockPluginConfig);
+    @Before
+    public void setUp() {
+        PluginConfigurationManager mockPluginConfig = mock(PluginConfigurationManager.class);
+        final PluginConfiguration mockConfigDto = PluginConfigurationBuilder.testInstance("7.1.1").build();
+        when(mockPluginConfig.getCurrent()).thenReturn(mockConfigDto);
+        underTest = new CheckstyleProjectService(PROJECT, mockPluginConfig);
     }
-
-    @AfterClass
-    public static void tearDown() {
-        CheckStyleConfiguration.activateMock4UnitTesting(null);
-    }
-
 
     @Test
     public void testReadVersions() {
-        CheckstyleProjectService service = new CheckstyleProjectService(PROJECT);
-        SortedSet<String> versions = service.getSupportedVersions();
-        Assert.assertNotNull(versions);
-        Assert.assertTrue(versions.size() > 0);
-        Assert.assertNotNull(versions.comparator());
-        Assert.assertEquals(VersionComparator.class, versions.comparator().getClass());
+        SortedSet<String> versions = underTest.getSupportedVersions();
+        assertNotNull(versions);
+        assertTrue(versions.size() > 0);
+        assertNotNull(versions.comparator());
+        assertEquals(VersionComparator.class, versions.comparator().getClass());
     }
 }

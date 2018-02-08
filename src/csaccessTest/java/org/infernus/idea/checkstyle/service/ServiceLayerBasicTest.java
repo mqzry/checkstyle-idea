@@ -2,16 +2,16 @@ package org.infernus.idea.checkstyle.service;
 
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.project.Project;
-import org.infernus.idea.checkstyle.CheckStyleConfiguration;
 import org.infernus.idea.checkstyle.CheckstyleProjectService;
-import org.infernus.idea.checkstyle.PluginConfigDto;
 import org.infernus.idea.checkstyle.checker.CheckStyleChecker;
 import org.infernus.idea.checkstyle.checker.ScannableFile;
+import org.infernus.idea.checkstyle.config.PluginConfiguration;
+import org.infernus.idea.checkstyle.config.PluginConfigurationBuilder;
+import org.infernus.idea.checkstyle.config.PluginConfigurationManager;
 import org.infernus.idea.checkstyle.csapi.CheckstyleActions;
 import org.infernus.idea.checkstyle.csapi.TabWidthAndBaseDirProvider;
 import org.infernus.idea.checkstyle.exception.CheckstyleToolException;
 import org.infernus.idea.checkstyle.model.ConfigurationLocation;
-import org.infernus.idea.checkstyle.model.ScanScope;
 import org.jetbrains.annotations.NotNull;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
@@ -37,29 +37,23 @@ import static org.mockito.Mockito.when;
 public class ServiceLayerBasicTest {
     private static final Project PROJECT = mock(Project.class);
 
-    private static CheckstyleProjectService checkstyleProjectService = null;
-
     private static final String CONFIG_FILE_BREAKS_AFTER_6_16_1 = "config1-6.16.1-but-not-6.17.xml";
     private static final String CONFIG_FILE_BREAKS_BEFORE_6_19 = "config2-6.19-but-not-6.17.xml";
     private static final String CONFIG_FILE_BREAKS_ON_6_6 = "config3-6.19-but-not-6.6.xml";
 
+    private static CheckstyleProjectService checkstyleProjectService;
+
     @BeforeClass
     public static void setUp() {
-        CheckStyleConfiguration mockPluginConfig = mock(CheckStyleConfiguration.class);
-        final PluginConfigDto mockConfigDto = new PluginConfigDto(currentCsVersion(),
-                ScanScope.AllSources, false, Collections.emptySortedSet(), Collections.emptyList(), null, false);
-        when(mockPluginConfig.getCurrentPluginConfig()).thenReturn(mockConfigDto);
-        CheckStyleConfiguration.activateMock4UnitTesting(mockPluginConfig);
-
-        checkstyleProjectService = new CheckstyleProjectService(PROJECT);
-        CheckstyleProjectService.activateMock4UnitTesting(checkstyleProjectService);
+        PluginConfigurationManager mockPluginConfig = mock(PluginConfigurationManager.class);
+        final PluginConfiguration mockConfigDto = PluginConfigurationBuilder.testInstance(currentCsVersion()).build();
+        when(mockPluginConfig.getCurrent()).thenReturn(mockConfigDto);
+        checkstyleProjectService = new CheckstyleProjectService(PROJECT, mockPluginConfig);
     }
 
     @AfterClass
     public static void tearDown() {
         checkstyleProjectService = null;
-        CheckstyleProjectService.activateMock4UnitTesting(null);
-        CheckStyleConfiguration.activateMock4UnitTesting(null);
     }
 
     @Test

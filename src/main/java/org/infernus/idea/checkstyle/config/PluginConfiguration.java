@@ -1,4 +1,4 @@
-package org.infernus.idea.checkstyle;
+package org.infernus.idea.checkstyle.config;
 
 import net.jcip.annotations.Immutable;
 import org.infernus.idea.checkstyle.exception.CheckStylePluginException;
@@ -16,46 +16,48 @@ import java.util.*;
  * This is intended to be a simple DTO without any business logic.
  */
 @Immutable
-public class PluginConfigDto {
-
+public class PluginConfiguration {
     private final String checkstyleVersion;
     private final ScanScope scanScope;
     private final boolean suppressErrors;
+    private final boolean copyLibs;
     private final SortedSet<ConfigurationLocation> locations;
     private final List<String> thirdPartyClasspath;
     private final ConfigurationLocation activeLocation;
     private final boolean scanBeforeCheckin;
+    private final String lastActivePluginVersion;
 
-    public PluginConfigDto(@NotNull final String checkstyleVersion,
-                           @Nullable final ScanScope scanScope,
-                           final boolean suppressErrors,
-                           @NotNull final SortedSet<ConfigurationLocation> locations,
-                           @NotNull final List<String> thirdPartyClasspath,
-                           @Nullable final ConfigurationLocation activeLocation,
-                           final boolean scanBeforeCheckin) {
+    PluginConfiguration(@NotNull final String checkstyleVersion,
+                        @NotNull final ScanScope scanScope,
+                        final boolean suppressErrors,
+                        final boolean copyLibs,
+                        @NotNull final SortedSet<ConfigurationLocation> locations,
+                        @NotNull final List<String> thirdPartyClasspath,
+                        @Nullable final ConfigurationLocation activeLocation,
+                        final boolean scanBeforeCheckin,
+                        @Nullable final String lastActivePluginVersion) {
         this.checkstyleVersion = checkstyleVersion;
-        this.scanScope = scanScope != null ? scanScope : ScanScope.getDefaultValue();
+        this.scanScope = scanScope;
         this.suppressErrors = suppressErrors;
+        this.copyLibs = copyLibs;
         this.locations = Collections.unmodifiableSortedSet(locations);
         this.thirdPartyClasspath = Collections.unmodifiableList(thirdPartyClasspath);
         this.activeLocation = constrainActiveLocation(locations, activeLocation);
         this.scanBeforeCheckin = scanBeforeCheckin;
+        this.lastActivePluginVersion = lastActivePluginVersion;
     }
 
-    public PluginConfigDto(@NotNull final PluginConfigDto oldDto, final boolean pScanBeforeCheckin) {
-        this(oldDto.getCheckstyleVersion(), oldDto.getScanScope(), oldDto.isSuppressErrors(), oldDto.getLocations(),
-                oldDto.getThirdPartyClasspath(), oldDto.getActiveLocation(), pScanBeforeCheckin);
-    }
-
-    private final ConfigurationLocation constrainActiveLocation(
-            @NotNull final SortedSet<ConfigurationLocation> locations,
-            @Nullable final ConfigurationLocation activeLocation) {
-        if (activeLocation != null && !locations.isEmpty()) {
-            return locations.stream().filter(cl -> cl.equals(activeLocation)).findFirst().orElse(null);
+    private ConfigurationLocation constrainActiveLocation(
+            @NotNull final SortedSet<ConfigurationLocation> sourceLocations,
+            @Nullable final ConfigurationLocation sourceActiveLocation) {
+        if (sourceActiveLocation != null && !sourceLocations.isEmpty()) {
+            return sourceLocations.stream()
+                    .filter(cl -> cl.equals(sourceActiveLocation))
+                    .findFirst()
+                    .orElse(null);
         }
         return null;
     }
-
 
     @NotNull
     public String getCheckstyleVersion() {
@@ -71,6 +73,10 @@ public class PluginConfigDto {
         return suppressErrors;
     }
 
+    public boolean isCopyLibs() {
+        return copyLibs;
+    }
+
     @NotNull
     public SortedSet<ConfigurationLocation> getLocations() {
         return locations;
@@ -81,11 +87,11 @@ public class PluginConfigDto {
         return thirdPartyClasspath;
     }
 
-    /**
-     * Getter.
-     *
-     * @return the active location, or <code>null</code> if none is active
-     */
+    @Nullable
+    public String getLastActivePluginVersion() {
+        return lastActivePluginVersion;
+    }
+
     @Nullable
     public ConfigurationLocation getActiveLocation() {
         return activeLocation;
@@ -95,12 +101,11 @@ public class PluginConfigDto {
         return scanBeforeCheckin;
     }
 
-    boolean hasChangedFrom(final Object other) {
-        return this.equals(other)
-                && locationsAreEqual((PluginConfigDto) other);
+    public boolean hasChangedFrom(final Object other) {
+        return this.equals(other) && locationsAreEqual((PluginConfiguration) other);
     }
 
-    private boolean locationsAreEqual(final PluginConfigDto other) {
+    private boolean locationsAreEqual(final PluginConfiguration other) {
         Iterator<ConfigurationLocation> locationIterator = locations.iterator();
         Iterator<ConfigurationLocation> otherLocationIterator = other.locations.iterator();
 
@@ -125,19 +130,21 @@ public class PluginConfigDto {
         if (other == null || getClass() != other.getClass()) {
             return false;
         }
-        final PluginConfigDto otherDto = (PluginConfigDto) other;
+        final PluginConfiguration otherDto = (PluginConfiguration) other;
         return Objects.equals(checkstyleVersion, otherDto.checkstyleVersion)
                 && Objects.equals(scanScope, otherDto.scanScope)
                 && Objects.equals(suppressErrors, otherDto.suppressErrors)
+                && Objects.equals(copyLibs, otherDto.copyLibs)
                 && Objects.equals(locations, otherDto.locations)
                 && Objects.equals(thirdPartyClasspath, otherDto.thirdPartyClasspath)
                 && Objects.equals(activeLocation, otherDto.activeLocation)
-                && Objects.equals(scanBeforeCheckin, otherDto.scanBeforeCheckin);
+                && Objects.equals(scanBeforeCheckin, otherDto.scanBeforeCheckin)
+                && Objects.equals(lastActivePluginVersion, otherDto.lastActivePluginVersion);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(checkstyleVersion, scanScope, suppressErrors, locations, thirdPartyClasspath,
-                activeLocation, scanBeforeCheckin);
+        return Objects.hash(checkstyleVersion, scanScope, suppressErrors, copyLibs, locations, thirdPartyClasspath,
+                activeLocation, scanBeforeCheckin, lastActivePluginVersion);
     }
 }

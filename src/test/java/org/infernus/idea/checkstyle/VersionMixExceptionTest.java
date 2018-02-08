@@ -5,12 +5,14 @@ import com.intellij.openapi.project.Project;
 import com.intellij.testFramework.LightPlatformTestCase;
 import org.infernus.idea.checkstyle.checker.CheckStyleChecker;
 import org.infernus.idea.checkstyle.checker.ScannableFile;
+import org.infernus.idea.checkstyle.config.PluginConfigurationManager;
+import org.infernus.idea.checkstyle.config.PluginConfiguration;
+import org.infernus.idea.checkstyle.config.PluginConfigurationBuilder;
 import org.infernus.idea.checkstyle.csapi.CheckstyleActions;
 import org.infernus.idea.checkstyle.csapi.TabWidthAndBaseDirProvider;
 import org.infernus.idea.checkstyle.exception.CheckStylePluginException;
 import org.infernus.idea.checkstyle.exception.CheckstyleVersionMixException;
 import org.infernus.idea.checkstyle.model.ConfigurationLocation;
-import org.infernus.idea.checkstyle.model.ScanScope;
 import org.jetbrains.annotations.NotNull;
 import org.junit.Assert;
 
@@ -49,28 +51,22 @@ public class VersionMixExceptionTest extends LightPlatformTestCase {
     protected void setUp() throws Exception {
         super.setUp();
 
-        CheckStyleConfiguration mockPluginConfig = mock(CheckStyleConfiguration.class);
-        final PluginConfigDto mockConfigDto = new PluginConfigDto(BASE_VERSION, ScanScope.AllSources, false,
-                Collections.emptySortedSet(), Collections.emptyList(), null, false);
-        when(mockPluginConfig.getCurrentPluginConfig()).thenReturn(mockConfigDto);
-        CheckStyleConfiguration.activateMock4UnitTesting(mockPluginConfig);
+        PluginConfigurationManager mockPluginConfig = mock(PluginConfigurationManager.class);
+        final PluginConfiguration mockConfigDto = PluginConfigurationBuilder.testInstance(BASE_VERSION).build();
+        when(mockPluginConfig.getCurrent()).thenReturn(mockConfigDto);
 
-        csService = new CheckstyleProjectService(PROJECT);
+        csService = new CheckstyleProjectService(PROJECT, mockPluginConfig);
         csService.activateCheckstyleVersion(BASE_VERSION, null);
-        CheckstyleProjectService.activateMock4UnitTesting(csService);
     }
 
     @Override
     protected void tearDown() throws Exception {
         try {
-            CheckstyleProjectService.activateMock4UnitTesting(null);
-            CheckStyleConfiguration.activateMock4UnitTesting(null);
             csService = null;
         } finally {
             super.tearDown();
         }
     }
-
 
     /**
      * Test that a {@link CheckstyleVersionMixException} is thrown when a
@@ -132,8 +128,8 @@ public class VersionMixExceptionTest extends LightPlatformTestCase {
 
         final TabWidthAndBaseDirProvider configurations = mock(TabWidthAndBaseDirProvider.class);
         when(configurations.tabWidth()).thenReturn(2);
-        when(configurations.baseDir()).thenReturn(  //
-                Optional.of(new File(getClass().getResource(CONFIG_FILE).toURI()).getParent()));
+        final String baseDir = new File(getClass().getResource(CONFIG_FILE).toURI()).getParent();
+        when(configurations.baseDir()).thenReturn(Optional.of(baseDir));
 
         return csService.getCheckstyleInstance().createChecker(pModule, configLoc,
                 Collections.emptyMap(), configurations, getClass().getClassLoader());

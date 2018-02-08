@@ -16,8 +16,9 @@ import com.intellij.ui.table.JBTable;
 import com.intellij.util.ui.JBUI;
 import org.infernus.idea.checkstyle.CheckStyleBundle;
 import org.infernus.idea.checkstyle.CheckstyleProjectService;
-import org.infernus.idea.checkstyle.PluginConfigDto;
 import org.infernus.idea.checkstyle.checker.CheckerFactoryCache;
+import org.infernus.idea.checkstyle.config.PluginConfiguration;
+import org.infernus.idea.checkstyle.config.PluginConfigurationBuilder;
 import org.infernus.idea.checkstyle.model.ConfigurationLocation;
 import org.infernus.idea.checkstyle.model.ScanScope;
 import org.infernus.idea.checkstyle.util.Icons;
@@ -25,15 +26,11 @@ import org.infernus.idea.checkstyle.util.Strings;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
-import javax.swing.border.EmptyBorder;
 import javax.swing.table.TableColumn;
 import java.awt.*;
 import java.awt.event.ActionEvent;
-import java.util.ArrayList;
-import java.util.Collections;
+import java.util.*;
 import java.util.List;
-import java.util.SortedSet;
-import java.util.TreeSet;
 
 
 /**
@@ -49,31 +46,33 @@ public class CheckStyleConfigPanel extends JPanel {
 
     private final JList<?> pathList = new JBList(new DefaultListModel<String>());
 
-    private final JLabel csVersionDropdownLabel = new JLabel(CheckStyleBundle.message("config.csversion.labelText") +
-            ":");
+    private final JLabel csVersionDropdownLabel = new JLabel(CheckStyleBundle.message("config.csversion.labelText") + ":");
     private final ComboBox csVersionDropdown;
     private final JLabel scopeDropdownLabel = new JLabel(CheckStyleBundle.message("config.scanscope.labelText") + ":");
     private final ComboBox scopeDropdown = new ComboBox(ScanScope.values());
     private final JCheckBox suppressErrorsCheckbox = new JCheckBox();
+    private final JCheckBox copyLibsCheckbox = new JCheckBox();
 
     private final LocationTableModel locationModel = new LocationTableModel();
     private final JBTable locationTable = new JBTable(locationModel);
 
     private final Project project;
+    private final CheckstyleProjectService checkstyleProjectService;
 
-
-    public CheckStyleConfigPanel(@NotNull final Project project) {
+    public CheckStyleConfigPanel(@NotNull final Project project,
+                                 @NotNull final CheckstyleProjectService checkstyleProjectService) {
         super(new BorderLayout());
 
         this.project = project;
-        csVersionDropdown = buildCheckstyleVersionComboBox(project);
+        this.checkstyleProjectService = checkstyleProjectService;
+
+        csVersionDropdown = buildCheckstyleVersionComboBox();
 
         initialise();
     }
 
-
-    private ComboBox buildCheckstyleVersionComboBox(@NotNull final Project currentProject) {
-        SortedSet<String> versions = CheckstyleProjectService.getInstance(currentProject).getSupportedVersions();
+    private ComboBox buildCheckstyleVersionComboBox() {
+        SortedSet<String> versions = checkstyleProjectService.getSupportedVersions();
         SortedSet<String> reversedVersions = new TreeSet<>(Collections.reverseOrder(versions.comparator()));
         reversedVersions.addAll(versions);
         String[] supportedVersions = reversedVersions.toArray(new String[reversedVersions.size()]);
@@ -83,8 +82,7 @@ public class CheckStyleConfigPanel extends JPanel {
     private void activateCurrentClasspath() {
         ServiceManager.getService(project, CheckerFactoryCache.class).invalidate();
 
-        CheckstyleProjectService csService = CheckstyleProjectService.getInstance(project);
-        csService.activateCheckstyleVersion(getCheckstyleVersion(), getThirdPartyClasspath());
+        checkstyleProjectService.activateCheckstyleVersion(getCheckstyleVersion(), getThirdPartyClasspath());
     }
 
     private void initialise() {
@@ -97,6 +95,9 @@ public class CheckStyleConfigPanel extends JPanel {
 
         suppressErrorsCheckbox.setText(CheckStyleBundle.message("config.suppress-errors.checkbox.text"));
         suppressErrorsCheckbox.setToolTipText(CheckStyleBundle.message("config.suppress-errors.checkbox.tooltip"));
+
+        copyLibsCheckbox.setText(CheckStyleBundle.message("config.stabilize-classpath.text"));
+        copyLibsCheckbox.setToolTipText(CheckStyleBundle.message("config.stabilize-classpath.tooltip"));
 
         final JPanel configFilePanel = new JPanel(new GridBagLayout());
         configFilePanel.setOpaque(false);
@@ -114,13 +115,16 @@ public class CheckStyleConfigPanel extends JPanel {
                 3, 0, 1, 1, 0.0, 0.0, GridBagConstraints.WEST,
                 GridBagConstraints.NONE, COMPONENT_INSETS, 0, 0));
         configFilePanel.add(suppressErrorsCheckbox, new GridBagConstraints(
-                4, 0, 1, 1, 1.0, 0.0, GridBagConstraints.WEST,
+                0, 1, 2, 1, 1.0, 0.0, GridBagConstraints.WEST,
+                GridBagConstraints.HORIZONTAL, COMPONENT_INSETS, 0, 0));
+        configFilePanel.add(copyLibsCheckbox, new GridBagConstraints(
+                2, 1, 2, 1, 1.0, 0.0, GridBagConstraints.WEST,
                 GridBagConstraints.HORIZONTAL, COMPONENT_INSETS, 0, 0));
         configFilePanel.add(buildRuleFilePanel(), new GridBagConstraints(
-                0, 1, 5, 1, 1.0, 1.0, GridBagConstraints.WEST,
+                0, 2, 4, 1, 1.0, 1.0, GridBagConstraints.WEST,
                 GridBagConstraints.BOTH, COMPONENT_INSETS, 0, 0));
         configFilePanel.add(buildClassPathPanel(), new GridBagConstraints(
-                0, 2, 5, 1, 1.0, 1.0, GridBagConstraints.WEST,
+                0, 3, 4, 1, 1.0, 1.0, GridBagConstraints.WEST,
                 GridBagConstraints.BOTH, COMPONENT_INSETS, 0, 0));
 
         return configFilePanel;
@@ -146,7 +150,7 @@ public class CheckStyleConfigPanel extends JPanel {
         container.add(tableDecorator.createPanel(), BorderLayout.CENTER);
         final JLabel infoLabel = new JLabel(CheckStyleBundle.message("config.file.description"),
                 Icons.icon("/general/information.png"), SwingConstants.LEFT);
-        infoLabel.setBorder(new EmptyBorder(8, 0, 4, 0));
+        infoLabel.setBorder(JBUI.Borders.empty(8, 0, 4, 0));
         container.add(infoLabel, BorderLayout.SOUTH);
         return container;
     }
@@ -176,7 +180,7 @@ public class CheckStyleConfigPanel extends JPanel {
         column.setWidth(preferredSize);
         column.setPreferredWidth(preferredSize);
         if (maxSize != null) {
-            column.setMaxWidth(maxSize.intValue());
+            column.setMaxWidth(maxSize);
         }
     }
 
@@ -223,29 +227,33 @@ public class CheckStyleConfigPanel extends JPanel {
     }
 
 
-    public void showPluginConfiguration(@NotNull final PluginConfigDto pluginConfig) {
+    public void showPluginConfiguration(@NotNull final PluginConfiguration pluginConfig) {
         csVersionDropdown.setSelectedItem(pluginConfig.getCheckstyleVersion());
         scopeDropdown.setSelectedItem(pluginConfig.getScanScope());
         suppressErrorsCheckbox.setSelected(pluginConfig.isSuppressErrors());
+        copyLibsCheckbox.setSelected(pluginConfig.isCopyLibs());
         locationModel.setLocations(new ArrayList<>(pluginConfig.getLocations()));
         setThirdPartyClasspath(pluginConfig.getThirdPartyClasspath());
         locationModel.setActiveLocation(pluginConfig.getActiveLocation());
     }
 
-    public PluginConfigDto getPluginConfiguration() {
+    public PluginConfiguration getPluginConfiguration() {
         final String checkstyleVersion = (String) csVersionDropdown.getSelectedItem();
         ScanScope scanScope = (ScanScope) scopeDropdown.getSelectedItem();
         if (scanScope == null) {
             scanScope = ScanScope.getDefaultValue();
         }
-        final boolean suppressErrors = suppressErrorsCheckbox.isSelected();
-        final SortedSet<ConfigurationLocation> locations = new TreeSet<>(locationModel.getLocations());
-        final List<String> thirdPartyClasspath = getThirdPartyClasspath();
-        final ConfigurationLocation activeLocation = locationModel.getActiveLocation();
 
-        final PluginConfigDto result = new PluginConfigDto(checkstyleVersion, scanScope, suppressErrors, locations,
-                thirdPartyClasspath, activeLocation, false); // we don't know the scanBeforeCheckin flag at this point
-        return result;
+        // we don't know the scanBeforeCheckin flag at this point
+        return PluginConfigurationBuilder.defaultConfiguration(project)
+                .withCheckstyleVersion(checkstyleVersion)
+                .withScanScope(scanScope)
+                .withSuppressErrors(suppressErrorsCheckbox.isSelected())
+                .withCopyLibraries(copyLibsCheckbox.isSelected())
+                .withLocations(new TreeSet<>(locationModel.getLocations()))
+                .withThirdPartyClassPath(getThirdPartyClasspath())
+                .withActiveLocation(locationModel.getActiveLocation())
+                .build();
     }
 
 
@@ -263,7 +271,7 @@ public class CheckStyleConfigPanel extends JPanel {
 
         @Override
         public void actionPerformed(final ActionEvent e) {
-            final LocationDialogue dialogue = new LocationDialogue(project);
+            final LocationDialogue dialogue = new LocationDialogue(project, checkstyleProjectService);
 
             dialogue.setVisible(true);
 
@@ -340,7 +348,7 @@ public class CheckStyleConfigPanel extends JPanel {
             return CheckStyleConfigPanel.this.getParent();
         }
 
-        private Window parentWindow(Container window) {
+        private Window parentWindow(final Container window) {
             if (window instanceof Window) {
                 return (Window) window;
             }
